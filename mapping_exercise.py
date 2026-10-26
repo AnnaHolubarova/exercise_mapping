@@ -178,3 +178,76 @@ def inverse_bwt(bwt):
 #print(inverse_bwt(bwt("AAGGCGGCTTCA$", [12, 11, 0, 1, 10, 4, 7, 3, 6, 2, 5, 9, 8])))
 
 # Task 3
+
+class FMIndex:
+    """A sampled FM-index for a text terminated by ``$``."""
+
+    def __init__(self, text, s):
+        if not text.endswith("$"):
+            raise ValueError("text must end with '$'")
+        if not isinstance(s, int) or isinstance(s, bool) or s <= 0:
+            raise ValueError("s must be a positive integer")
+
+        sa = suffix_array(text)
+        self.bwt = bwt(text, sa)
+        #print(self.bwt)
+        self.first_occurrence = first_occurrence(self.bwt)
+        self.s = s
+        self.sampled = {
+            row: position
+            for row, position in enumerate(sa)
+            if position % s == 0
+        }
+        #print(self.sampled)
+
+        self.counts = {letter: [0] for letter in self.bwt}
+        for letter in self.bwt:
+            for indexed_letter, prefix_counts in self.counts.items():
+                prefix_counts.append(
+                    prefix_counts[-1] + (indexed_letter == letter)
+                )
+        #print(self.counts["T"])
+
+    def lf(self, row):
+        """Return the row for the suffix starting one position earlier."""
+        if not 0 <= row < len(self.bwt):
+            raise IndexError("row is outside the BWT")
+        letter = self.bwt[row]
+        #print(f"LF mapping for row {row} with letter '{letter}': First occurrence: {self.first_occurrence[letter]}, Count: {self.counts[letter][row]}")
+        return self.first_occurrence[letter] + self.counts[letter][row]
+
+    def count(self, p):
+        """Return the half-open suffix-array interval matching ``p``."""
+        if not p:
+            raise ValueError("p must be non-empty")
+        if p.count("$") > 1 or ("$" in p and not p.endswith("$")):
+            return 0, 0
+
+        top, bottom = 0, len(self.bwt)
+        for letter in reversed(p):
+            if letter not in self.first_occurrence:
+                return top, top
+            top = self.first_occurrence[letter] + self.counts[letter][top]
+            bottom = (
+                self.first_occurrence[letter] + self.counts[letter][bottom]
+            )
+            if top == bottom:
+                break
+        #print(f"Count for pattern '{p}': Top index: {top}, Bottom index: {bottom}")
+        return top, bottom
+
+    def locate(self, p):
+        """Return the text positions of all occurrences of ``p``."""
+        top, bottom = self.count(p)
+        positions = []
+        for row in range(top, bottom):
+            steps = 0
+            while row not in self.sampled:
+                row = self.lf(row)
+                steps += 1
+            positions.append(self.sampled[row] + steps)
+        return positions
+
+#FMIndex("CAT$", 2)
+#FMIndex.lf(FMIndex("CAT$", 2), 1)
+#FMIndex.count(FMIndex("AAGGCGGCTTCA$", 2), "GGC")
